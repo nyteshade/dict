@@ -5,6 +5,8 @@
 #define NULL 0L
 #endif
 
+#include <stdio.h>
+
 typedef long Integer;
 typedef float Number;
 typedef char *String;
@@ -39,7 +41,12 @@ typedef struct DNode {
 } DNode;
 
 struct DList;
-typedef void (*DListForEachFn)(DNode *node, Integer index, struct DList *list);
+typedef void (*DListForEachFn)(
+  DNode *node,
+  Integer index,
+  struct DList *list,
+  void *context
+);
 
 typedef struct DList {
   DNode *head;
@@ -59,8 +66,11 @@ typedef struct DList {
   DNode         *(*findNamed)(struct DList *list, String name);
   Object        *(*removeNamed)(struct DList *list, String name);
   Object        *(*remove)(struct DList *list, DNode *node);
-  void           (*forEach)(struct DList *list, DListForEachFn fn);
+  void           (*forEach)(struct DList *list, DListForEachFn fn, void *ctx);
 } DList;
+
+void       ObjectTypeToString(ObjectType type, String buffer);
+ObjectType StringToObjectType(String typeString);
 
 Object *AllocObject(void);
 Object *ObjectSetString(Object *object, String string);
@@ -89,7 +99,11 @@ Bool    DListGetBool(DList *list, String name);
 DNode  *DListFindNamed(DList *list, String name);
 Object *DListRemoveNamed(DList *list, String name);
 Object *DListRemove(DList *list, DNode *node);
-void    DListForEach(DList *list, DListForEachFn fn);
+void    DListForEach(DList *list, DListForEachFn fn, void *context);
 void    DListFree(DList *list);
+void    DListWriteFP(DList *list, FILE *file);
+void    DListWrite(DList *list, String fileName);
+DList  *DListReadFP(FILE *file);
+DList  *DListRead(String fileName);
 
 #endif

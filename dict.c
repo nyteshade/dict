@@ -11,6 +11,46 @@ int (*debug)( const char * format, ... ) = &__debug_noop;
 int (*debug)( const char * format, ... ) = &printf;
 #endif
 
+void ObjectTypeToString(ObjectType type, String buffer) {
+  switch (type) {
+    case STRING:
+      strcpy(buffer, "String");
+      return;
+    case NUMBER:
+      strcpy(buffer, "Number");
+      return;
+    case BOOL:
+      strcpy(buffer, "Boolean");
+      return;
+  };
+}
+
+ObjectType StringToObjectType(String typeString) {
+  if (
+    strcasecmp(typeString, "str") == 0 ||
+    strcasecmp(typeString, "string") == 0
+  ) {
+    return STRING;
+  }
+
+  if (
+    strcasecmp(typeString, "num") == 0 ||
+    strcasecmp(typeString, "number") == 0 ||
+    strcasecmp(typeString, "no") == 0
+  ) {
+    return NUMBER;
+  }
+
+  if (
+    strcasecmp(typeString, "bool") == 0 ||
+    strcasecmp(typeString, "boolean") == 0
+  ) {
+    return BOOL;
+  }
+
+  return 0;
+}
+
 Object *AllocObject(void) {
   Object *object = (Object *)malloc(sizeof(Object));
   memset(object, 0L, sizeof(Object));
@@ -212,7 +252,7 @@ Object *DListRemove(DList *list, DNode *node) {
   return result;
 }
 
-void DListForEach(DList *list, DListForEachFn fn) {
+void DListForEach(DList *list, DListForEachFn fn, void *context) {
   DNode *node, *next;
   Integer count = 0;
 
@@ -222,17 +262,204 @@ void DListForEach(DList *list, DListForEachFn fn) {
 
   for (next = node = list->head; next; node = next) {
     next = node->next;
-    fn(node, count, list);
+    fn(node, count, list, context);
     count++;
   }
 }
 
-void __dNodeFreeEach(DNode *node, Integer index, DList *list) {
+void __dNodeFreeEach(DNode *node, Integer index, DList *list, void *ctx) {
   DListRemove(list, node);
 }
 
 void DListFree(DList *list) {
-  DListForEach(list, __dNodeFreeEach);
+  DListForEach(list, __dNodeFreeEach, NULL);
   debug("[Debug] freeing list %p\n", list);
   free(list);
+}
+
+Bool __writeString(FILE *file, String string) {
+  Integer length = (Integer)strlen(string);
+  ssize_t xfer = 0;
+  Bool error = False;
+
+  error = (!error && (xfer = fwrite(
+    &length,
+    sizeof(Integer),
+    1,
+    file
+  )) < 0);
+
+  error = (!error && (xfer = fwrite(
+    string,
+    sizeof(char) * length,
+    1,
+    file
+  )) < 0);
+  return error;
+}
+
+String __readString(FILE *file) {
+  Integer length;
+  ssize_t xfer;
+  String result;
+
+  debug("[__readString] %p\n", file);
+
+  xfer = fread(&length, sizeof(Integer), 1, file);
+  debug("[__readString] read %d bytes\n", (long)xfer);
+  if (xfer <= 0) return NULL;
+
+  debug("[__readString] allocating %d bytes...", length + 1);
+  result = (String)malloc(sizeof(char) * (length + 1));
+  debug("%s\n", result ? "done" : "error");
+  if (!result) return NULL;
+
+  debug("[__readString] clearing %d bytes...", (length + 1) * sizeof(char));
+  memset(result, 0L, sizeof(char) * (length + 1));
+  debug("done\n");
+  xfer = 0;
+  xfer = fread(result, sizeof(char) * length, 1, file);
+  debug("[__readString] read %d bytes\n", xfer);
+  if (xfer <= 0) {
+    debug("[__readString] ERROR!\n");
+    free(result);
+    return NULL;
+  }
+
+  debug("[__readString] read %s\n", result);
+  return result;
+}
+
+Bool __writeInteger(FILE *file, Integer integer) {
+  ssize_t xfer = fwrite(&integer, sizeof(Integer), 1, file);
+  return xfer > 0;
+}
+
+Integer __readInteger(FILE *file) {
+  Integer result;
+  fread(&result, sizeof(Integer), 1, file);
+  return result;
+}
+
+Bool __writeNumber(FILE *file, Number number) {
+  ssize_t xfer = fwrite(&number, sizeof(Number), 1, file);
+  return xfer > 0;
+}
+
+Number __readNumber(FILE *file) {
+  Number result;
+  fread(&result, sizeof(Number), 1, file);
+  return result;
+}
+
+Bool __writeBool(FILE *file, Bool boolean) {
+  ssize_t xfer = fwrite(&boolean, sizeof(Bool), 1, file);
+  return xfer > 0;
+}
+
+Bool __readBool(FILE *file) {
+  Bool result;
+  fread(&result, sizeof(Bool), 1, file);
+  return result;
+}
+
+Bool __writeType(FILE *file, ObjectType type) {
+  ssize_t xfer = fwrite(&type, sizeof(ObjectType), 1, file);
+  return xfer > 0;
+}
+
+Number __readType(FILE *file) {
+  ObjectType result;
+  ssize_t xfer;
+  xfer = fread(&result, sizeof(ObjectType), 1, file);
+  return xfer <= 0 ? -1 : result;
+}
+
+void __dNodeWriteEach(DNode *node, Integer index, DList *list, void *ctx) {
+  FILE *file = (FILE *)ctx;
+  __writeType(file, node->obj->type);
+  __writeString(file, node->name);
+  switch (node->obj->type) {
+    case STRING:
+      __writeString(file, node->obj->string);
+      break;
+    case NUMBER:
+      __writeNumber(file, node->obj->number);
+      break;
+    case BOOL:
+      __writeBool(file, node->obj->boolean);
+      break;
+  }
+}
+
+void DListWriteFP(DList *list, FILE *file) {
+  list->forEach(list, __dNodeWriteEach, file);
+}
+
+void DListWrite(DList *list, String fileName) {
+  FILE *file = fopen((const char *)fileName, "w+");
+  if (file) {
+    DListWriteFP(list, file);
+  }
+  fclose(file);
+}
+
+DList  *DListReadFP(FILE *file) {
+  ObjectType type;
+  ObjectData data;
+  Integer length;
+  String key;
+  Bool error = False;
+  DList *list = AllocDList(False);
+  Bool done = False;
+  char typeString[20];
+
+  while (!done) {
+    debug("...reading type: ");
+    type = __readType(file);
+    if (!type) { debug("failed!\n"); done = True; break; }
+    ObjectTypeToString(type, typeString);
+    debug("%s\n", typeString);
+
+    debug("...reading key : ");
+    key = __readString(file);
+    if (key) {
+      debug("%s\n", key);
+      switch (type) {
+        case STRING:
+          debug("...reading str : ");
+          data.string = __readString(file);
+          debug("%s\n", data.string);
+          list->setString(list, key, data.string);
+          free(key);
+          continue;
+        case NUMBER:
+          debug("...reading num : ");
+          data.number = __readNumber(file);
+          debug("%f\n", data.number);
+          list->setNumber(list, key, data.number);
+          free(key);
+          continue;
+        case BOOL:
+          debug("...reading bool: ");
+          data.boolean = __readBool(file);
+          debug("%s\n", data.boolean ? "True" : "False");
+          list->setBool(list, key, data.boolean);
+          free(key);
+          continue;
+      }
+    }
+  }
+
+  return list;
+}
+
+DList  *DListRead(String fileName) {
+  debug("Reading list (%s)...", fileName);
+  FILE *file = fopen(fileName, "r+");
+  debug("%s\n", file ? "True" : "False");
+  DList *list = DListReadFP(file);
+  fclose(file);
+
+  return list;
 }

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-void printEach(DNode *node, Integer count, DList *list) {
+void printEach(DNode *node, Integer count, DList *list, void *ctx) {
   char typeString[25];
   char valueString[50];
 
@@ -35,10 +35,14 @@ int main() {
   list->setNumber(list, "age", 21);
   list->setNumber(list, "keysOwned", 5);
   list->setBool(list, "lovesBreakfast", True);
-  list->forEach(list, printEach);
+  list->forEach(list, printEach, NULL);
 
   // TODO list->write() and list->read()
+  DListWrite(list, "./dict.dat");
+  DListFree(list);
 
+  list = DListRead("./dict.dat");
+  list->forEach(list, printEach, NULL);
   DListFree(list);
 
   return 0;
