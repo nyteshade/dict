@@ -67,6 +67,9 @@ typedef struct DList {
   Object        *(*removeNamed)(struct DList *list, String name);
   Object        *(*remove)(struct DList *list, DNode *node);
   void           (*forEach)(struct DList *list, DListForEachFn fn, void *ctx);
+  void           (*save)(struct DList *list, String fileName);
+  struct DList  *(*load)(String fileName);
+
 } DList;
 
 void       ObjectTypeToString(ObjectType type, String buffer);

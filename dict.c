@@ -139,6 +139,8 @@ DList  *AllocDList(Bool namesAreCaseSensitive) {
   list->removeNamed = DListRemoveNamed;
   list->remove = DListRemove;
   list->forEach = DListForEach;
+  list->save = DListWrite;
+  list->load = DListRead;
 
   return list;
 }
